@@ -1,0 +1,25 @@
+# Builds the Windows executable in the cloud (GitHub Actions) - no local setup needed.
+# Run it from the "Actions" tab ("Run workflow"); download the zip from the run's artifacts.
+name: Build Windows exe
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pytest -q tests
+      - run: python -m PyInstaller --noconfirm --clean VideoDownloader.spec
+      - run: Compress-Archive -Path dist\VideoDownloader -DestinationPath dist\VideoDownloader_portable.zip
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoDownloader-windows
+          path: dist/VideoDownloader_portable.zip
