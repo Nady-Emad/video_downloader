@@ -170,3 +170,45 @@ def test_windows_file_lock_is_retried_not_failed_over():
     info = classify_error(RuntimeError("[WinError 32] The process cannot access the file because it is being "
                                        "used by another process: 'x.part'"))
     assert info.transient and info.kind == "file_locked"
+
+
+def test_soundcloud_set_entries_get_real_titles_and_artwork(monkeypatch):
+    """Flat SoundCloud listings have no title/thumbnail per track; they are looked up per item."""
+    import sys
+    import types
+    from core.cookie_manager import CookieConfig
+    from engines.ytdlp_engine import YtdlpEngine
+
+    flat_entries = [
+        {"id": str(i), "url": f"https://api-v2.soundcloud.com/tracks/{i}", "ie_key": "Soundcloud"}
+        for i in (1, 2, 3)
+    ]
+    detail = {
+        "1": {"title": "Surah Al-Fatiha", "thumbnail": "https://i1.sndcdn.com/artworks-1-large.jpg", "duration": 61},
+        "2": {"title": "Surah Al-Baqarah", "thumbnail": "https://i1.sndcdn.com/artworks-2-large.jpg", "duration": 120},
+    }
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def extract_info(self, url, download=False, process=True):
+            if self.opts.get("extract_flat"):
+                return {"_type": "playlist", "title": "Set", "entries": flat_entries}
+            track_id = url.rsplit("/", 1)[-1]
+            if track_id not in detail:
+                raise RuntimeError("boom")            # item 3 fails: it must keep a fallback title
+            return detail[track_id]
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=FakeYDL))
+    info = YtdlpEngine().fetch_info("https://soundcloud.com/u/sets/s", CookieConfig(), False, lambda *a: None)
+    assert [e.title for e in info.entries] == ["Surah Al-Fatiha", "Surah Al-Baqarah", "Video 3"]
+    assert info.entries[0].thumbnail.endswith("artworks-1-large.jpg")
+    assert info.entries[1].duration == 120
+    assert info.entries[2].thumbnail == ""

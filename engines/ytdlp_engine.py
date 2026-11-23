@@ -140,7 +140,62 @@ class YtdlpEngine(BaseEngine):
             raise EngineError(str(exc), classify_error(exc).kind) from exc
         if not raw:
             return None
-        return self._to_media_info(url, raw)
+        info = self._to_media_info(url, raw)
+        if info.is_playlist:
+            self._enrich_entries(info, raw, opts, log_cb)
+        return info
+
+    # Hosts whose flat playlist listing already carries a title and a thumbnail for every entry.
+    _FLAT_COMPLETE = ("youtube.com", "youtu.be")
+    ENRICH_WORKERS = 8
+    ENRICH_LIMIT = 200
+
+    @classmethod
+    def _needs_enrichment(cls, entry: PlaylistEntry, flat: Dict[str, Any]) -> bool:
+        if not entry.available or not entry.url:
+            return False
+        no_title = not str(flat.get("title") or "").strip()
+        no_thumb = not entry.thumbnail
+        if any(host in entry.url.lower() for host in cls._FLAT_COMPLETE):
+            return no_title
+        return no_title or no_thumb
+
+    def _enrich_entries(self, info: MediaInfo, raw: Dict[str, Any], opts: Dict[str, Any],
+                        log_cb: LogCallback) -> None:
+        """SoundCloud (and similar) sets list tracks without a title or artwork when extracted flat. Look the
+        missing ones up in parallel so the list shows the real track names, durations and cover images."""
+        import yt_dlp  # type: ignore
+        from concurrent.futures import ThreadPoolExecutor
+        flats = list(raw.get("entries") or [])
+        todo = [e for e in info.entries
+                if e.index - 1 < len(flats) and flats[e.index - 1] and self._needs_enrichment(e, flats[e.index - 1])]
+        if not todo:
+            return
+        todo = todo[:self.ENRICH_LIMIT]
+        log_cb("INFO", f"Reading details of {len(todo)} playlist items...")
+        item_opts = dict(opts)
+        item_opts.update({"extract_flat": False, "noplaylist": True, "skip_download": True, "no_warnings": True})
+
+        def lookup(entry: PlaylistEntry) -> None:
+            try:
+                with yt_dlp.YoutubeDL(item_opts) as ydl:
+                    data = ydl.extract_info(entry.url, download=False, process=False)
+            except Exception as exc:       # one broken item must not spoil the whole list
+                log_cb("DEBUG", f"Could not read item {entry.index}: {exc}")
+                return
+            if not data:
+                return
+            title = str(data.get("title") or "").strip()
+            if title:
+                entry.title = title
+            thumb = _best_thumbnail(data)
+            if thumb:
+                entry.thumbnail = thumb
+            entry.duration = _int(data.get("duration")) or entry.duration
+            entry.size = _int(data.get("filesize") or data.get("filesize_approx")) or entry.size
+
+        with ThreadPoolExecutor(max_workers=self.ENRICH_WORKERS) as pool:
+            list(pool.map(lookup, todo))
 
     @staticmethod
     def _to_media_info(url: str, raw: Dict[str, Any]) -> MediaInfo:
