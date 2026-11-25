@@ -5,6 +5,7 @@ import shutil
 from typing import Any, Dict, Optional, Tuple
 
 from core import cookie_manager
+from core.platform_detector import is_youtube
 from core.quality_manager import QualitySpec, available_heights, pick_height, ytdlp_format, ytdlp_sort
 from engines.base_engine import (
     TEMP_STEM, BaseEngine, CancelToken, DownloadCancelled, DownloadRequest, DownloadResult, EngineError,
@@ -52,6 +53,17 @@ def _effective_height(fmt: Dict[str, Any]) -> Optional[int]:
     return height
 
 
+def _impersonation_target() -> Any:
+    """Browser impersonation (needs the optional curl_cffi package); None when unavailable."""
+    if not module_available("curl_cffi"):
+        return None
+    try:
+        from yt_dlp.networking.impersonate import ImpersonateTarget  # type: ignore
+        return ImpersonateTarget.from_str("chrome")
+    except Exception:
+        return None
+
+
 def _entry_url(entry: Dict[str, Any]) -> str:
     for key in ("webpage_url", "url"):
         value = entry.get(key)
@@ -92,7 +104,7 @@ class YtdlpEngine(BaseEngine):
         return True, ""
 
     # ------------------------------------------------------------------ metadata
-    def _base_opts(self, cookies: Any, log_cb: LogCallback) -> Dict[str, Any]:
+    def _base_opts(self, cookies: Any, log_cb: LogCallback, url: str = "") -> Dict[str, Any]:
         opts: Dict[str, Any] = {
             "quiet": True, "no_warnings": False, "noprogress": True, "logger": _YtdlpLogger(log_cb),
             "socket_timeout": 30, "retries": 0, "fragment_retries": 3, "extractor_retries": 0,
@@ -103,6 +115,10 @@ class YtdlpEngine(BaseEngine):
         runtime = js_runtime_path()
         if runtime:
             opts["js_runtimes"] = {runtime[0]: {"path": runtime[1]}}
+        if url and not is_youtube(url):
+            target = _impersonation_target()
+            if target is not None:
+                opts["impersonate"] = target     # TikTok, Instagram... reject requests that do not look like a browser
         return opts
 
     @staticmethod
@@ -131,7 +147,7 @@ class YtdlpEngine(BaseEngine):
             import yt_dlp  # type: ignore
         except ImportError as exc:
             raise MissingDependencyError("yt-dlp is not installed. Run: pip install yt-dlp") from exc
-        opts = self._base_opts(cookies, log_cb)
+        opts = self._base_opts(cookies, log_cb, url)
         opts.update({"extract_flat": "in_playlist", "noplaylist": noplaylist, "skip_download": True})
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -264,7 +280,7 @@ class YtdlpEngine(BaseEngine):
                 stage = "converting" if data.get("postprocessor") == "ExtractAudio" else "merging"
                 progress_cb(ProgressInfo(percent=-1.0, stage=stage, engine=self.name, title=state["title"]))
 
-        opts = self._base_opts(request.cookies, log_cb)
+        opts = self._base_opts(request.cookies, log_cb, request.url)
         opts.update({
             "format": ytdlp_format(quality, ffmpeg_ok),
             "format_sort": ytdlp_sort(quality),

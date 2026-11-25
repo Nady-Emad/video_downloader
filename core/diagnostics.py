@@ -18,11 +18,12 @@ CATEGORIES = {
     network.MISSING_DEP: "Missing dependency", network.FFMPEG: "FFmpeg",
     network.AUTH: "Authentication", network.NETWORK: "Network", network.TIMEOUT: "Network",
     network.DNS: "Network", network.DISK: "Storage", network.PERMISSION: "Storage / permissions",
-    network.FILE_LOCKED: "Storage / permissions", network.CORRUPTED: "Media validation",
+    network.FILE_LOCKED: "Storage / permissions", network.EXTRACTOR: "Site changed (update engines)", network.CORRUPTED: "Media validation",
     network.PRIVATE: "Source (private)", network.DELETED: "Source (unavailable)",
     network.RESTRICTED: "Source (restricted)", network.INVALID_URL: "Invalid link",
 }
 HINTS = {
+    "Site changed (update engines)": "Open Diagnostics > Dependencies and press Update download engines, then retry.",
     "Missing dependency": "Install the missing package (pip install -r requirements.txt) and restart.",
     "FFmpeg": "Install FFmpeg (winget install Gyan.FFmpeg) or set its path in Settings.",
     "Authentication": "Configure browser cookies or a cookies file in Settings, then retry.",

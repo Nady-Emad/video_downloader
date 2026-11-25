@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import List, Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (
     QCheckBox, QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
@@ -16,10 +16,18 @@ from PyQt6.QtWidgets import (
 
 import app_info
 from config.settings import Settings
-from core import diagnostics
+from core import diagnostics, engine_updater
 from core.download_manager import DownloadManager
 from utils import system_info
 from utils.logger import redact
+
+
+class _EngineUpdateThread(QThread):
+    finished_update = pyqtSignal(bool, str)
+
+    def run(self) -> None:
+        ok, text = engine_updater.update_engines()
+        self.finished_update.emit(ok, text)
 
 
 class DiagnosticsPage(QWidget):
@@ -69,7 +77,15 @@ class DiagnosticsPage(QWidget):
         deps_tab = QWidget()
         d_layout = QVBoxLayout(deps_tab)
         d_layout.addWidget(self.deps_view, 1)
-        d_layout.addWidget(self.recheck_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.update_button = QPushButton(tr("Update download engines"))
+        self.update_button.setObjectName("primary")
+        self.update_button.setToolTip(tr("Fixes errors such as 'Unexpected response from webpage request'."))
+        buttons_row = QHBoxLayout()
+        buttons_row.addWidget(self.recheck_button)
+        buttons_row.addWidget(self.update_button)
+        buttons_row.addStretch(1)
+        d_layout.addLayout(buttons_row)
+        self._update_thread: Optional[_EngineUpdateThread] = None
 
         # ---- log tab
         self.log_view = QPlainTextEdit()
@@ -107,6 +123,7 @@ class DiagnosticsPage(QWidget):
         self.copy_button.clicked.connect(self._copy)
         self.clear_button.clicked.connect(self._clear)
         self.recheck_button.clicked.connect(self.refresh_dependencies)
+        self.update_button.clicked.connect(self.update_engines)
         self.reload_log_button.clicked.connect(self.reload_log)
         self.open_log_button.clicked.connect(self._open_log_folder)
         self.export_button.clicked.connect(self._export)
@@ -172,6 +189,28 @@ class DiagnosticsPage(QWidget):
                 line += f"\n         -> pip install {name.split()[0]}"
             lines.append(line)
         self.deps_view.setPlainText("\n".join(lines))
+
+    def update_engines(self) -> None:
+        if self._update_thread is not None:
+            return
+        self.update_button.setEnabled(False)
+        self.update_button.setText(tr("Updating..."))
+        self.deps_view.setPlainText(tr("Updating yt-dlp, gallery-dl, you-get and pytubefix... this can take a minute."))
+        thread = _EngineUpdateThread(self)
+        thread.finished_update.connect(self._engines_updated)
+        self._update_thread = thread
+        thread.start()
+
+    def _engines_updated(self, ok: bool, text: str) -> None:
+        thread, self._update_thread = self._update_thread, None
+        if thread is not None:
+            thread.wait()
+        self.update_button.setEnabled(True)
+        self.update_button.setText(tr("Update download engines"))
+        self.refresh_dependencies()
+        head = tr("Engines updated. Restart the application to use the new versions.") if ok \
+            else tr("Engine update failed.")
+        self.deps_view.setPlainText(head + "\n\n" + redact(text) + "\n\n" + self.deps_view.toPlainText())
 
     # ------------------------------------------------------------------ logs and export
     def reload_log(self) -> None:

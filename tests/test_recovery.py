@@ -212,3 +212,32 @@ def test_soundcloud_set_entries_get_real_titles_and_artwork(monkeypatch):
     assert info.entries[0].thumbnail.endswith("artworks-1-large.jpg")
     assert info.entries[1].duration == 120
     assert info.entries[2].thumbnail == ""
+
+
+def test_outdated_extractor_error_is_classified_and_does_not_stop_the_chain():
+    from utils import network
+    info = network.classify_error(RuntimeError(
+        "[TikTok] 77095: Unexpected response from webpage request; please report this issue on https://github.com"))
+    assert info.kind == network.EXTRACTOR
+    assert not info.transient and not info.stops_chain      # other engines are still tried
+    assert "Update the download engines" in info.message
+
+
+def test_engine_updater_refuses_in_frozen_build_and_builds_pip_command(monkeypatch):
+    from core import engine_updater
+    cmd = engine_updater.pip_command()
+    assert cmd[1:4] == ["-m", "pip", "install"] and any(p.startswith("yt-dlp") for p in cmd)
+    monkeypatch.setattr(engine_updater, "is_frozen", lambda: True)
+    ok, text = engine_updater.update_engines()
+    assert not ok and "make_exe.bat" in text
+
+
+def test_generic_sites_are_offered_to_gallery_dl_and_you_get():
+    from core.platform_detector import OTHER
+    from core.quality_manager import QualitySpec
+    from core.cookie_manager import CookieConfig
+    from engines.gallery_dl_engine import GalleryDlEngine
+    from engines.youget_engine import YouGetEngine
+    for engine in (GalleryDlEngine(), YouGetEngine()):
+        ok, reason = engine.supports(OTHER, QualitySpec(), CookieConfig())
+        assert ok or "not installed" in reason, reason

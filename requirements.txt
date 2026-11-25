@@ -2,7 +2,7 @@
 # because sites change often, so upgrade them first when downloads start failing:
 #   pip install -U yt-dlp pytubefix gallery-dl you-get
 PyQt6>=6.5,<7
-yt-dlp[default]>=2025.1.1   # [default] adds the YouTube JS challenge solver (yt-dlp-ejs)
+yt-dlp[default,curl-cffi]>=2025.1.1   # default: YouTube JS solver; curl-cffi: browser impersonation (TikTok etc.)
 pytubefix>=6.0
 gallery-dl>=1.26
 you-get>=0.4.1650

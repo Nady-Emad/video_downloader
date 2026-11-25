@@ -25,6 +25,7 @@ FFMPEG = "ffmpeg"
 CORRUPTED = "corrupted"
 CANCELLED = "cancelled"
 FILE_LOCKED = "file_locked"
+EXTRACTOR = "extractor_outdated"
 UNKNOWN = "unknown"
 
 TRANSIENT_KINDS = {NETWORK, TIMEOUT, DNS, FILE_LOCKED}
@@ -46,11 +47,18 @@ class ErrorInfo:
         return self.kind in STOP_CHAIN_KINDS
 
 
+_OUTDATED = ("The site changed and this engine cannot read it yet. Update the download engines "
+             "(Diagnostics > Dependencies > Update download engines); other engines are tried meanwhile.")
+
 # (substring, kind, readable message). First match wins; order matters.
 _PATTERNS = [
     ("being used by another process", FILE_LOCKED,
      "A file is temporarily locked by another program (antivirus or indexer). Retrying."),
     ("winerror 32", FILE_LOCKED, "A file is temporarily locked by another program (antivirus or indexer). Retrying."),
+    ("unexpected response from webpage", EXTRACTOR, _OUTDATED),
+    ("confirm you are on the latest version", EXTRACTOR, _OUTDATED),
+    ("unable to extract", EXTRACTOR, _OUTDATED),
+    ("please report this issue", EXTRACTOR, _OUTDATED),
     ("sign in to confirm", AUTH, "The site asks you to sign in. Configure browser cookies or a cookies file in Settings."),
     ("login required", AUTH, "Login is required. Configure browser cookies or a cookies file in Settings."),
     ("log in", AUTH, "Login is required. Configure browser cookies or a cookies file in Settings."),

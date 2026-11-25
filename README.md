@@ -255,6 +255,7 @@ URL, private/deleted video, disk full, permission denied) stop the chain. 5. Out
 
 | Problem | What to do |
 |---|---|
+| `Unexpected response from webpage request` (TikTok, etc.) | The site changed. Diagnostics > Dependencies > **Update download engines**, then restart. The app also tries the other engines and uses browser impersonation (`curl-cffi`) for non-YouTube sites. In the exe build, rerun `make_exe.bat`. |
 | Downloads suddenly fail on one site | `pip install -U yt-dlp pytubefix gallery-dl you-get` |
 | `No supported JavaScript runtime could be found` | Install Deno (`winget install DenoLand.Deno`), restart the app |
 | "Requested format is not available" | Same as above, and install FFmpeg; update `yt-dlp[default]` |

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Deque, Optional, Tuple
 
 from core import cookie_manager
-from core.platform_detector import FACEBOOK, INSTAGRAM, SOUNDCLOUD, TIKTOK, TWITTER, YOUTUBE
+from core.platform_detector import FACEBOOK, OTHER, INSTAGRAM, SOUNDCLOUD, TIKTOK, TWITTER, YOUTUBE
 from core.quality_manager import QualitySpec
 from engines.base_engine import (
     TEMP_STEM, BaseEngine, CancelToken, DownloadRequest, DownloadResult, EngineError, EngineUnsupported,
@@ -43,7 +43,7 @@ class GalleryDlEngine(BaseEngine):
     def supports(self, platform: str, quality: QualitySpec, cookies: Any) -> Tuple[bool, str]:
         if platform == YOUTUBE:
             return False, "gallery-dl is not used for YouTube"
-        if platform not in SUPPORTED_PLATFORMS:
+        if platform not in SUPPORTED_PLATFORMS and platform != OTHER:
             return False, f"gallery-dl has no extractor for {platform}"
         if quality.is_audio and platform != SOUNDCLOUD:
             return False, "gallery-dl cannot extract audio from this platform"

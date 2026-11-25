@@ -6,7 +6,7 @@ from collections import deque
 from typing import Any, Deque, Tuple
 
 from core import cookie_manager
-from core.platform_detector import FACEBOOK, INSTAGRAM, SOUNDCLOUD, TIKTOK, TWITTER, VIMEO, YOUTUBE
+from core.platform_detector import FACEBOOK, OTHER, INSTAGRAM, SOUNDCLOUD, TIKTOK, TWITTER, VIMEO, YOUTUBE
 from core.quality_manager import QualitySpec
 from engines.base_engine import (
     TEMP_STEM, BaseEngine, CancelToken, DownloadRequest, DownloadResult, EngineError, EngineUnsupported,
@@ -26,7 +26,7 @@ class YouGetEngine(BaseEngine):
         return module_available("you_get")
 
     def supports(self, platform: str, quality: QualitySpec, cookies: Any) -> Tuple[bool, str]:
-        if platform not in SUPPORTED_PLATFORMS:
+        if platform not in SUPPORTED_PLATFORMS and platform != OTHER:
             return False, f"you-get does not support {platform}"
         if quality.is_audio and platform != SOUNDCLOUD:
             return False, "you-get cannot extract audio-only from this platform"
