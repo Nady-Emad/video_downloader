@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
         self.tray = TrayController(self, self.manager, self.settings)
         self._apply_settings_to_ui()
         self._report_environment()
-        self.manager.recover()
+        QTimer.singleShot(400, self.manager.recover)     # after the window is visible: scans download folders
         QTimer.singleShot(1500, self._check_for_updates)
 
     # ------------------------------------------------------------------ UI construction

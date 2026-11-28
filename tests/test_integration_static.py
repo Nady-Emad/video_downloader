@@ -68,3 +68,33 @@ def test_main_window_pages_match_sidebar():
     labels = re.search(r"PAGES = \[(.*?)\]", src, re.S).group(1)
     assert len(re.findall(r'"[^"]+"', labels)) == 7
     assert "range(7)" in src
+
+
+def test_app_never_starts_an_installation_wizard():
+    """VideoDownloader.exe must open the main window directly; installing is VideoDownloader_Setup.exe's job."""
+    import pathlib
+    source = (pathlib.Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+    assert "SetupWizard" not in source and ".exec()" not in source.replace("app.exec()", "")
+
+
+def test_installer_script_is_separate_and_cancel_safe():
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    iss = (root / "installer" / "VideoDownloader.iss").read_text(encoding="utf-8")
+    assert "OutputBaseFilename=VideoDownloader_Setup" in iss and "OutputDir=." in iss
+    assert 'Source: "..\\dist\\VideoDownloader\\*"' in iss
+    run = iss.split("[Run]")[1].split("[", 1)[0]
+    assert "postinstall" in run and "skipifsilent" in run            # runs only after a finished install
+    assert "SetupIconFile" in iss and "DefaultDirName={autopf}" in iss
+
+
+def test_one_click_build_produces_the_installer_too():
+    """make_exe.bat used to build only the app, so no Setup.exe ever existed. It must call the installer build,
+    and that build must fail loudly when no real installer file is produced."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    make = (root / "make_exe.bat").read_text(encoding="utf-8")
+    inst = (root / "tools" / "build_installer.bat").read_text(encoding="utf-8")
+    assert "call tools\\build_installer.bat" in make and "installer\\VideoDownloader_Setup.exe" in make
+    assert "ISCC" in inst and "winget install --id JRSoftware.InnoSetup" in inst
+    assert "was not produced" in inst and "exit /b 1" in inst

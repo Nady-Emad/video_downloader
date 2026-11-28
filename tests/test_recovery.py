@@ -241,3 +241,56 @@ def test_generic_sites_are_offered_to_gallery_dl_and_you_get():
     for engine in (GalleryDlEngine(), YouGetEngine()):
         ok, reason = engine.supports(OTHER, QualitySpec(), CookieConfig())
         assert ok or "not installed" in reason, reason
+
+
+def test_no_console_flags_are_added_and_respect_explicit_console_requests():
+    from utils import no_console as nc
+    marker = object()
+    out = nc.patched_kwargs({"stdout": 1}, marker)
+    assert out["creationflags"] & nc.CREATE_NO_WINDOW and out["startupinfo"] is marker and out["stdout"] == 1
+    out = nc.patched_kwargs({"creationflags": 0x200}, None)            # CREATE_NEW_PROCESS_GROUP is kept
+    assert out["creationflags"] == 0x200 | nc.CREATE_NO_WINDOW
+    out = nc.patched_kwargs({"creationflags": nc.CREATE_NEW_CONSOLE}, None)
+    assert out["creationflags"] == nc.CREATE_NEW_CONSOLE                # caller asked for its own console
+    assert nc.install() is False                                        # no-op off Windows
+
+
+def test_ffmpeg_version_probe_is_cached(tmp_path, monkeypatch):
+    from core import ffmpeg_manager as fm
+    fake = tmp_path / "ffmpeg"
+    fake.write_bytes(b"x")
+    calls = []
+    monkeypatch.setattr(fm.FfmpegManager, "_cache_file", staticmethod(lambda: tmp_path / "v.json"))
+    monkeypatch.setattr(fm.FfmpegManager, "_probe_version", lambda self: calls.append(1) or "ffmpeg version 7")
+    manager = fm.FfmpegManager.__new__(fm.FfmpegManager)
+    manager.ffmpeg_path = str(fake)
+    assert manager._read_version() == "ffmpeg version 7" and manager._read_version() == "ffmpeg version 7"
+    assert len(calls) == 1                                              # second call came from the cache
+
+
+def test_crash_logging_writes_uncaught_exceptions_to_the_log(tmp_path):
+    import logging
+    import sys
+    from utils import logger
+    log_file = tmp_path / "app.log"
+    old_hook = sys.excepthook
+    log = logging.getLogger("vdl")
+    old_handlers = list(log.handlers)
+    try:
+        log.handlers.clear()
+        if hasattr(log, "_vdl_configured"):
+            del log._vdl_configured
+        logger.setup_logging(log_file, "info")
+        logger.install_crash_logging()
+        try:
+            raise RuntimeError("boom-startup")
+        except RuntimeError:
+            sys.excepthook(*sys.exc_info())
+        for handler in log.handlers:
+            handler.flush()
+        assert "boom-startup" in log_file.read_text(encoding="utf-8")
+    finally:
+        for handler in list(log.handlers):
+            handler.close()
+        log.handlers[:] = old_handlers
+        sys.excepthook = old_hook

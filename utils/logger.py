@@ -68,10 +68,12 @@ def setup_logging(log_file: Optional[Path] = None, level: str = "info") -> loggi
             logger.addHandler(handler)
         except OSError:
             pass  # logging problems must never stop the application
-    stream = logging.StreamHandler()
-    stream.setFormatter(fmt)
-    stream.addFilter(RedactingFilter())
-    logger.addHandler(stream)
+    import sys
+    if sys.stderr is not None:             # windowed (no-console) builds have no stderr: file log only
+        stream = logging.StreamHandler()
+        stream.setFormatter(fmt)
+        stream.addFilter(RedactingFilter())
+        logger.addHandler(stream)
     logger._vdl_configured = True  # type: ignore[attr-defined]
     return logger
 
@@ -103,3 +105,26 @@ def make_log_callback(component: str, forward: Optional[LogCallback] = None) -> 
             forward(level.upper(), safe)
 
     return _callback
+
+
+def install_crash_logging() -> None:
+    """Send uncaught exceptions (main thread and worker threads) to the log file instead of a console that
+    does not exist. Also gives a windowed build harmless stdout/stderr so stray print() calls cannot crash it."""
+    import os
+    import sys
+    import threading
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+    log = get_logger("crash")
+
+    def hook(exc_type, exc, tb):
+        log.error("Uncaught exception", exc_info=(exc_type, exc, tb))
+
+    sys.excepthook = hook
+
+    def thread_hook(args):
+        log.error("Uncaught exception in thread %s", getattr(args.thread, "name", "?"),
+                  exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+
+    threading.excepthook = thread_hook

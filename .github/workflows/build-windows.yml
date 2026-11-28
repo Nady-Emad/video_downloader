@@ -1,6 +1,6 @@
-# Builds the Windows executable in the cloud (GitHub Actions) - no local setup needed.
-# Run it from the "Actions" tab ("Run workflow"); download the zip from the run's artifacts.
-name: Build Windows exe
+# Builds, installs and smoke-tests the Windows app in the cloud (GitHub Actions) - no local setup needed.
+# Run it from the "Actions" tab ("Run workflow"); download the artifacts of the run.
+name: Build Windows exe and installer
 on:
   workflow_dispatch:
   push:
@@ -17,9 +17,72 @@ jobs:
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pytest -q tests
       - run: python -m PyInstaller --noconfirm --clean VideoDownloader.spec
+      - name: Smoke test the exe (starts, writes a log, opens no console)
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $p = Start-Process dist\VideoDownloader\VideoDownloader.exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) { throw "VideoDownloader.exe exited early with code $($p.ExitCode)" }
+          $kids = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $p.Id -and $_.Name -match 'cmd|powershell|conhost' }
+          if ($kids) { throw "A console process was started: $($kids.Name)" }
+          $log = Join-Path $env:APPDATA "Video Downloader\logs\application.log"
+          if (-not (Test-Path $log)) { throw "No log file at $log" }
+          Stop-Process -Id $p.Id -Force
+      - name: Build the installer (Inno Setup is preinstalled on the runner)
+        shell: pwsh
+        run: |
+          $v = python -c "import app_info; print(app_info.VERSION)"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" installer\VideoDownloader.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          $setup = Get-Item installer\VideoDownloader_Setup.exe
+          $app = Get-Item dist\VideoDownloader\VideoDownloader.exe
+          if ($setup.Length -lt 5MB -or $setup.Length -le $app.Length) { throw "The installer is not a real installer ($($setup.Length) bytes)" }
+      - name: Test B - closing the installer window cancels everything and starts nothing
+        shell: pwsh
+        run: |
+          $dir = "C:\Apps\CancelTest"
+          $p = Start-Process installer\VideoDownloader_Setup.exe -ArgumentList "/DIR=`"$dir`"" -PassThru
+          Start-Sleep -Seconds 8
+          [void]$p.CloseMainWindow()          # same as pressing X: Inno asks "Exit Setup?" and nothing is installed yet
+          Start-Sleep -Seconds 2
+          Get-Process | Where-Object { $_.ProcessName -like "VideoDownloader_Setup*" -or $_.ProcessName -like "*.tmp" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          if (Get-Process VideoDownloader -ErrorAction SilentlyContinue) { throw "The application was launched by a cancelled installer" }
+          if (Test-Path "$dir\VideoDownloader.exe") { throw "Files were installed by a cancelled installer" }
+          if (Test-Path "$env:PUBLIC\Desktop\Video Downloader.lnk") { throw "A shortcut was created by a cancelled installer" }
+      - name: Tests A, C, D - install (default or custom folder), shortcuts, launch from shortcut, uninstall
+        shell: pwsh
+        run: |
+          $dir = "D:\Applications\Video Downloader"
+          if (-not (Test-Path D:\)) { $dir = "C:\Apps\Video Downloader" }
+          Start-Process installer\VideoDownloader_Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=`"$dir`"" -Wait
+          foreach ($f in "VideoDownloader.exe") { if (-not (Test-Path "$dir\$f")) { throw "Missing $f in $dir" } }
+          if (-not (Test-Path "$dir\_internal")) { throw "Application files were not copied" }
+          if (-not (Test-Path "$dir\unins000.exe")) { throw "No uninstaller" }
+          $desktop = "$env:PUBLIC\Desktop\Video Downloader.lnk"
+          $start = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Video Downloader.lnk"
+          if (-not (Test-Path $desktop)) { throw "No desktop shortcut" }
+          if (-not (Test-Path $start)) { throw "No Start Menu shortcut" }
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut($desktop).TargetPath
+          if ($target -ne "$dir\VideoDownloader.exe") { throw "Shortcut points to $target" }
+          if (-not (Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object DisplayName -eq "Video Downloader")) { throw "Not registered in Installed apps" }
+          $env:QT_QPA_PLATFORM = "offscreen"
+          Start-Process $desktop                       # launch exactly like a double-click on the desktop shortcut
+          Start-Sleep -Seconds 15
+          $app = Get-Process VideoDownloader -ErrorAction SilentlyContinue
+          if (-not $app) { throw "The application did not stay running when launched from the shortcut" }
+          Stop-Process -Id $app.Id -Force
+          Start-Process "$dir\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES" -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dir\VideoDownloader.exe") { throw "Uninstall left the program behind" }
+          if ((Test-Path $desktop) -or (Test-Path $start)) { throw "Uninstall left shortcuts behind" }
+          if (-not (Test-Path "$env:APPDATA\Video Downloader")) { throw "Uninstall deleted the user's settings without asking" }
       - run: Compress-Archive -Path dist\VideoDownloader -DestinationPath dist\VideoDownloader_portable.zip
         shell: pwsh
       - uses: actions/upload-artifact@v4
         with:
           name: VideoDownloader-windows
-          path: dist/VideoDownloader_portable.zip
+          path: |
+            installer/VideoDownloader_Setup.exe
+            dist/VideoDownloader_portable.zip

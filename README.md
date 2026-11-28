@@ -335,7 +335,7 @@ per-user install without admin rights, uninstaller, your icon). Install Inno Set
 ```bat
 tools\build_installer.bat
 ```
-It builds the one-folder app and then `dist\VideoDownloader_Setup_<version>.exe`. The version comes from `app_info.py`
+It builds the one-folder app and then `installer\VideoDownloader_Setup.exe`. The version comes from `app_info.py`
 (single source of truth: also shown in the sidebar and the diagnostic report). FFmpeg and Deno are not bundled.
 
 ### Build notes
@@ -412,3 +412,23 @@ pyinstaller --noconfirm --clean VideoDownloader.spec
 ```
 الناتج: `dist\VideoDownloader\VideoDownloader.exe`، والأيقونة من `assets\icons\app.ico` (استبدل الملف بأيقونتك وأعد
 البناء). انسخ `ffmpeg.exe` و`ffprobe.exe` بجانب الـ exe أو ثبّتهما على الجهاز.
+
+## Startup speed, no terminal windows, logs, installer
+
+- **No console windows.** The exe is built with `console=False`, and `utils/no_console.py` makes every child process
+  (FFmpeg, ffprobe, gallery-dl, you-get, pip, and the helper processes yt-dlp starts itself) run with
+  `CREATE_NO_WINDOW` and a hidden `STARTUPINFO`. Output pipes, exit codes and timeouts are unchanged.
+- **Faster start.** The FFmpeg version probe is cached (path + size + date), so no process is started on a normal
+  launch; the leftover-folder cleanup runs 0.4 s after the window is shown; download libraries are imported only when a
+  download or analysis starts. Use the one-folder build (not one-file, which unpacks to `%TEMP%` on every launch).
+- **UPX is deliberately off:** it slows every start and triggers antivirus false positives.
+- **Logs:** `%APPDATA%\Video Downloader\logs\application.log` (rotating). Startup failures and uncaught exceptions
+  (also from worker threads) are written there; Settings/Diagnostics can open the folder.
+- **Installer:** `tools\build_installer.bat` builds the app and then `installer\VideoDownloader_Setup.exe` (Inno Setup 6).
+  Default folder `C:\Program Files\Video Downloader` (changeable, any drive); in the privilege dialog choose
+  "Install just for me" for a per-user install without administrator rights. Desktop and Start Menu shortcuts are
+  checkboxes. The uninstaller (`unins000.exe`, listed in Installed apps) removes the program and shortcuts and only
+  asks - default No - whether to delete settings/history/logs; downloads are never deleted.
+- **Test it all in the cloud:** the GitHub Actions workflow builds the exe and installer on Windows, starts the exe,
+  checks it opens no console and writes a log, installs silently to a custom folder, checks both shortcuts and
+  uninstalls.

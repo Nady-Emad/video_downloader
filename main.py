@@ -4,7 +4,10 @@ from __future__ import annotations
 import runpy
 import sys
 
+from utils import no_console
 from utils.system_info import RUN_MODULE_FLAG
+
+no_console.install()          # first thing: no child process (ffmpeg, yt-dlp helpers, ...) may open a console window
 
 
 def _run_embedded_module() -> None:
@@ -15,10 +18,32 @@ def _run_embedded_module() -> None:
 
 
 def main() -> int:
+    from utils import system_info
+    from utils.logger import install_crash_logging, setup_logging
+    from config.settings import Settings
+
+    settings = Settings()
+    setup_logging(system_info.log_path(), str(settings.get("log_level")))   # %APPDATA%\Video Downloader\logs
+    install_crash_logging()
+    try:
+        return _run(settings)
+    except Exception:
+        import logging
+        logging.getLogger("vdl").exception("Fatal error while starting the application")
+        try:
+            from PyQt6.QtWidgets import QApplication, QMessageBox
+            QApplication.instance() or QApplication(sys.argv)
+            QMessageBox.critical(None, "Video Downloader",
+                                 "The application could not start.\nDetails were saved to:\n" + str(system_info.log_path()))
+        except Exception:
+            pass
+        return 1
+
+
+def _run(settings) -> int:
     from PyQt6.QtGui import QIcon
     from PyQt6.QtWidgets import QApplication, QMessageBox
 
-    from config.settings import Settings
     from core.download_history import DownloadHistory
     from core.download_manager import DownloadManager
     from core.download_queue import DownloadQueue
@@ -28,12 +53,7 @@ def main() -> int:
     from gui.main_window import MainWindow
     from gui import i18n
     from gui.styles import build_qss
-    from gui.wizard import SetupWizard
     from utils import system_info
-    from utils.logger import setup_logging
-
-    settings = Settings()
-    setup_logging(system_info.log_path(), str(settings.get("log_level")))
 
     if sys.platform == "win32":      # own taskbar identity, so the taskbar shows our icon instead of python.exe's
         try:
@@ -60,19 +80,10 @@ def main() -> int:
                                               "History will not be saved in this session.")
     queue = DownloadQueue(db_path)
     manager = DownloadManager(settings, history, queue)
-    if not settings.get("first_run_done"):          # first-run setup: folder, FFmpeg, Deno, aria2c, language, theme, quality
-        wizard = SetupWizard(settings)
-        if wizard.exec():
-            try:
-                settings.update(wizard.values())
-            except Exception:
-                pass
-        settings.update({"first_run_done": True})   # shown once, even when skipped
-        manager.apply_settings()                    # pick up the FFmpeg path chosen in the wizard
-        i18n.set_language(str(settings.get("language")))
-        if i18n.is_rtl():
-            app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        app.setStyleSheet(build_qss(str(settings.get("theme"))))
+    # The application never shows an installation/setup wizard: installing is the job of VideoDownloader_Setup.exe.
+    # (gui/wizard.py is kept only as an optional dialog; nothing starts it.)
+    if not settings.get("first_run_done"):
+        settings.update({"first_run_done": True})
     window = MainWindow(settings, history, manager)
     window.show()
     return app.exec()

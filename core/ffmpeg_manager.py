@@ -108,7 +108,36 @@ class FfmpegManager:
                 return str(bundled)
         return None
 
+    @staticmethod
+    def _cache_file() -> Path:
+        from utils import system_info
+        return system_info.data_dir() / "cache" / "ffmpeg_version.json"
+
     def _read_version(self) -> str:
+        """`ffmpeg -version` output. Cached by path + size + modification time so normal startups do not have to
+        start ffmpeg at all (process creation is slow on Windows, especially with antivirus scanning)."""
+        try:
+            stat = Path(self.ffmpeg_path).stat()
+            stamp = f"{self.ffmpeg_path}|{stat.st_size}|{stat.st_mtime_ns}"
+        except OSError:
+            return ""
+        try:
+            cached = json.loads(self._cache_file().read_text(encoding="utf-8"))
+            if cached.get("stamp") == stamp and cached.get("version"):
+                return str(cached["version"])
+        except (OSError, ValueError):
+            pass
+        version = self._probe_version()
+        if version:
+            try:
+                target = self._cache_file()
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(json.dumps({"stamp": stamp, "version": version}), encoding="utf-8")
+            except OSError:
+                pass
+        return version
+
+    def _probe_version(self) -> str:
         try:
             out = subprocess.run(  # noqa: S603 - argument list
                 [self.ffmpeg_path, "-version"], capture_output=True, text=True, timeout=15,
