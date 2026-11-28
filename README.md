@@ -430,7 +430,3 @@ tests/                    pytest suite
 ## ⚖️ Legal
 
 Download only content you have the right to download and respect each site's terms of service and copyright law. This project is a front end for open-source libraries and does not circumvent DRM.
-
-- `installer\VideoDownloader_Setup.exe` ← معالج التثبيت (اختيار المجلد، اختصار سطح المكتب وقائمة Start، خيار تشغيل البرنامج في النهاية، وإزالة تثبيت نظيفة).
-
-**خطأ `Unexpected response from webpage request`:** الموقع غيّر صفحته ← Diagnostics ثم Dependencies ثم **Update download engines**، ثم أعد تشغيل البرنامج.
