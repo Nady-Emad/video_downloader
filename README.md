@@ -431,16 +431,6 @@ tests/                    pytest suite
 
 Download only content you have the right to download and respect each site's terms of service and copyright law. This project is a front end for open-source libraries and does not circumvent DRM.
 
----
-
-## 🇸🇦 بالعربية
-
-**التشغيل من الكود:** `pip install -r requirements.txt` ثم `python main.py`، وثبّت FFmpeg وDeno (`winget install Gyan.FFmpeg` و`winget install DenoLand.Deno`).
-
-**الاستخدام:** الصق الرابط وسيُحلَّل تلقائياً. للبلاي لست تظهر قائمة بالفيديوهات مع صورها ومدتها لتختار منها، والنقر على أي مكان في الصف يحدده أو يلغي تحديده. أزرار Pause / Resume / Cancel في بطاقة التقدم وفي صفحة Queue. عند انقطاع الإنترنت تصبح المهمة Interrupted وتُستكمل تلقائياً عند عودة الاتصال.
-
-**بناء ملف EXE والمثبّت (على ويندوز):** ضع المشروع في مسار إنجليزي مثل `C:\vd\video_downloader` وشغّل `make_exe.bat`. الناتج:
-- `dist\VideoDownloader\VideoDownloader.exe` ← البرنامج نفسه، يفتح مباشرة.
 - `installer\VideoDownloader_Setup.exe` ← معالج التثبيت (اختيار المجلد، اختصار سطح المكتب وقائمة Start، خيار تشغيل البرنامج في النهاية، وإزالة تثبيت نظيفة).
 
 **خطأ `Unexpected response from webpage request`:** الموقع غيّر صفحته ← Diagnostics ثم Dependencies ثم **Update download engines**، ثم أعد تشغيل البرنامج.
